@@ -50,7 +50,8 @@ Dancer::Plugin::Etcd contains a script called shepherd allows you to save Dancer
 
 To utilize shepherd with the plugin you will need to setup the plugin stub of your config. Now I know what your saying the config contains the root user/pass for etcd. That is why TLS is so important, and yes using TLS means that the key must be in the container. But [AWS](https://aws.amazon.com/blogs/security/how-to-manage-secrets-for-amazon-ec2-container-service-based-applications-by-using-amazon-s3-and-docker/), [Google Cloud Platform](https://cloud.google.com/kms/docs/store-secrets) and even [Kubernetes](https://kubernetes.io/docs/concepts/configuration/secret/) itself offer ways to share secrets with Docker containers as safely as possible.
 
-# config.yml
+
+### config.yml
 
 ```yaml
 appname: "DanceShop"
@@ -59,14 +60,45 @@ plugins:
   Etcd:
 ```
 
-# systemd define staging
+### systemd: define staging ENV
 ```
+[Unit]
+Description=Plackup
+After=network.target
+
 [Service]
-Environment='DANCER_ENVIRONMENT=staging'
+Type=simple
+Environment='PLACKUP_OPTS=-E ${DANCER_ENVIRONMENT} -p 3000 -s Starman --pid=/var/run/plackup/placlup.pid --workers 1 -D -a bin/app.psgi'
 ExecStart=/usr/local/bin/plackup ${PLACKUP_OPTS}
+WorkingDirectory=/home/dancer_user/app/DanceShop
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
 ```
 
-# environments/staging.yml
+### systemd: dancer_config_init.service
+```
+[Unit]
+Description=Initialize Dancer configs
+Before=plackup.service
+
+[Service]
+Environment='DANCER_ENVIRONMENT=staging'
+Type=oneshot
+WorkingDirectory=/home/dancer_user/app/DanceShop
+User=dancer_user
+Group=dancer_user
+
+ExecStart=/bin/bash /home/dancer_user/app/DanceShop/bin/config_init.sh
+Restart=no
+
+[Install]
+WantedBy=plackup.service
+```
+
+### environments/staging.yml
 
 ```
 plugins:
