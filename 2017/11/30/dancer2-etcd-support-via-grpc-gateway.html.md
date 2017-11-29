@@ -34,25 +34,52 @@ My motivation for creating the Dancer2 plugin was to have a simple method of dep
 
 Dancer allows for configurations to be stored in both YAML and JSON. I find YAML much nicer to use because of it's human readability and support for comments.
 
+### Comments can be useful additions to a configuration file.
+
 ```yaml
-# Comments can be useful additions to a configuration file.
-filter {
-  yaml {
-    code => "
-    # include timestamp in log format
-    logger_format: "%t [%P] %L @%D> %m in %f l. %l"
-    "
-  }
-}
+# include timestamp in log format
+logger_format: "%t [%P] %L @%D> %m in %f l. %l" 
 ```
- etcd is a perfect database for small amounts of data. So allowing a Dancer app easy access to the etcd datastore was a motivating factor.
 
-Dancer::Plugin::Etcd contains a script called shepherd allows you to save Dancer App YAML configs to etcd by line as key/value. Even more interesting is that it maintains your comments and whitespace.
+etcd is a perfect database for small amounts of data, even more interesting in a distributed ENV such as a Kubernetes deployment. So allowing a Dancer app easy access to the etcd datastore was something worht exploring.
+
+Dancer::Plugin::Etcd contains a script called shepherd allows you to save Dancer App YAML configs to etcd by line as key/value. Even more interesting is that it maintains not just comments but whitespace.
 
 
-### Testdrive
+### Dancer::Plugin::Etcd setup
 
-<add code examples>
+To utilize shepherd with the plugin you will need to setup the plugin stub of your config. Now I know what your saying the config contains the root user/pass for etcd. That is why TLS is so important, and yes using TLS means that the key must be in the container. But [AWS](https://aws.amazon.com/blogs/security/how-to-manage-secrets-for-amazon-ec2-container-service-based-applications-by-using-amazon-s3-and-docker/), [Google Cloud Platform](https://cloud.google.com/kms/docs/store-secrets) and even [Kubernetes](https://kubernetes.io/docs/concepts/configuration/secret/) itself offer ways to share secrets with Docker containers as safely as possible.
+
+# config.yml
+
+```yaml
+appname: "DanceShop"
+
+plugins:
+  Etcd:
+```
+
+# systemd define staging
+```
+[Service]
+Environment='DANCER_ENVIRONMENT=staging'
+ExecStart=/usr/local/bin/plackup ${PLACKUP_OPTS}
+```
+
+# environments/staging.yml
+
+```
+plugins:
+  Etcd:
+    host: 127.0.0.1
+    port: 4001
+    user: root
+    password: h3xFu5ion
+    cacert: path/to/cert.pem
+
+```
+
+
 
 ### Conclusion
 Blah blah
