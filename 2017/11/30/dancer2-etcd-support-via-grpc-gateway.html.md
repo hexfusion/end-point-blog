@@ -16,8 +16,8 @@ But as the v2 API was JSON and some languages such as Perl do not yet have full 
 ![alt text](https://raw.githubusercontent.com/hexfusion/end-point-blog/master/2017/11/29/dancer2-etcd-support-via-grpc-gateway/grpc-gateway.png?raw=true "gRPC Gateway")
 
 ### Net::Etcd
-I created Net::Etcd to provide Perl support for the etcd gRPC gateway. This proved to be much more challenging then expected. To highlight a few of the larger challenges, utilizing features of etcd such as key watches and lease keep-alives. These requests require asynchronous non blocking calls to the JSON API. Unlike Go, concurrency is not a core functionality of Perl. My solution was to use [AnyEvent::HTTP](https://metacpan.org/pod/AnyEvent::HTTP). Once I got the hang of using callbacks and had asynchronous tests passing I thought the war was won.
-But then I had the startling realization that there was no support for authentication via grpc-gateway. <mike-drop>. I had quite a bit of time into this project at this point. So instead of giving up I polished up my Go skills and added the support to etcd via [#7999](https://github.com/coreos/etcd/pull/7999). So as of etcd v3.3+ header based authentication via grpc-gateway is supported. Please give it a try!
+Net::Etcd was created to provide Perl support for the etcd gRPC gateway. This proved to be much more challenging then expected. To highlight a few of the larger challenges, utilizing features of etcd such as key watches and lease keep-alives. These requests require asynchronous non blocking calls to the JSON API. Unlike Go, concurrency is not a core functionality of Perl. My solution was to use [AnyEvent::HTTP](https://metacpan.org/pod/AnyEvent::HTTP). Once I got the hang of using callbacks and had asynchronous tests passing I thought the war was won.
+But then I had the startling realization that there was no support for authentication via grpc-gateway. [mike-drop](https://media.giphy.com/media/qlwnHTKCPeak0/giphy.gif) So out of pure stubbornness I polished up my Go skills and added the support to etcd via [#7999](https://github.com/coreos/etcd/pull/7999). As of etcd v3.3+ header based token authentication via grpc-gateway is supported. Please give it a try!
 
 ### Testdrive
 
@@ -50,6 +50,7 @@ Dancer::Plugin::Etcd contains a script called shepherd allows you to save Dancer
 
 To utilize shepherd with the plugin you will need to setup the plugin stub of your config. Now I know what your saying the config contains the root user/pass for etcd. That is why TLS is so important, and yes using TLS means that the key must be in the container. But [AWS](https://aws.amazon.com/blogs/security/how-to-manage-secrets-for-amazon-ec2-container-service-based-applications-by-using-amazon-s3-and-docker/), [Google Cloud Platform](https://cloud.google.com/kms/docs/store-secrets) and even [Kubernetes](https://kubernetes.io/docs/concepts/configuration/secret/) itself offer ways to share secrets with Docker containers as safely as possible.
 
+The snippets below outline how this might look inside of a container.
 
 ### config.yml
 
@@ -60,42 +61,55 @@ plugins:
   Etcd:
 ```
 
-### systemd: define staging ENV
+### systemd unit files
 ```
-[Unit]
-Description=Plackup
-After=network.target
+#cloud-config
 
-[Service]
-Type=simple
-Environment='PLACKUP_OPTS=-E ${DANCER_ENVIRONMENT} -p 3000 -s Starman --pid=/var/run/plackup/placlup.pid --workers 1 -D -a bin/app.psgi'
-ExecStart=/usr/local/bin/plackup ${PLACKUP_OPTS}
-WorkingDirectory=/home/dancer_user/app/DanceShop
-Restart=always
+coreos:
+  units:
+    - name: plackup.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Plackup
+        After=network.target
 
-[Install]
-WantedBy=multi-user.target
+        [Service]
+        Type=simple
+        Environment='PLACKUP_OPTS=-E ${DANCER_ENVIRONMENT} -p 3000 -s Starman --pid=/var/run/plackup/placlup.pid --workers 1 -D -a bin/app.psgi'
+        ExecStart=/usr/local/bin/plackup ${PLACKUP_OPTS}
+        WorkingDirectory=/home/dancer_user/app/DanceShop
+        Restart=always
 
+        [Install]
+        WantedBy=multi-user.target
+    - name: dancer_config_init.service 
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Initialize Dancer configs
+        Before=plackup.service
+        dancer_config_init.service
+        [Service]
+        Environment='DANCER_ENVIRONMENT=staging'
+        Type=oneshot
+        WorkingDirectory=/home/dancer_user/app/DanceShop
+        User=dancer_user
+        Group=dancer_user
+
+        ExecStart=/bin/bash /home/dancer_user/app/DanceShop/bin/config_init.sh
+        Restart=no
+
+        [Install]
+        WantedBy=plackup.service
+
+### config_init.sh
 ```
+#!/bin/bash
 
-### systemd: dancer_config_init.service
-```
-[Unit]
-Description=Initialize Dancer configs
-Before=plackup.service
-
-[Service]
-Environment='DANCER_ENVIRONMENT=staging'
-Type=oneshot
-WorkingDirectory=/home/dancer_user/app/DanceShop
-User=dancer_user
-Group=dancer_user
-
-ExecStart=/bin/bash /home/dancer_user/app/DanceShop/bin/config_init.sh
-Restart=no
-
-[Install]
-WantedBy=plackup.service
+shepherd --env ${DANCER_ENVIRONMENT} get
 ```
 
 ### environments/staging.yml
