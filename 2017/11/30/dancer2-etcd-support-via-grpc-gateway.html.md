@@ -16,26 +16,28 @@ But as the v2 API was JSON and some languages such as Perl do not yet have full 
 ![alt text](https://raw.githubusercontent.com/hexfusion/end-point-blog/master/2017/11/29/dancer2-etcd-support-via-grpc-gateway/grpc-gateway.png?raw=true "gRPC Gateway")
 
 ### Net::Etcd
-Net::Etcd is a Perl client supporting the etcd v3 REST API exposed by the gRPC gateway. Creating this moduled proved to be much more challenging then expected. To highlight a few of the larger challenges, utilizing features of etcd such as key watches and lease keep-alives. These requests require asynchronous non blocking calls to the JSON API. Unlike Go, concurrency is not a core functionality of Perl. Perl does support asynchronous transactions through a few modules, I went with AnyEvent [AnyEvent::HTTP](https://metacpan.org/pod/AnyEvent::HTTP). Programming using asynchronous non blocking code takes a little getting used to.
+Net::Etcd is a Perl client supporting the etcd v3 REST API exposed by the gRPC gateway. Creating this moduled proved to be much more challenging then expected. To highlight a few of the larger challenges, utilizing features of etcd such as [key watches](https://github.com/coreos/etcd/blob/master/Documentation/learning/api.md#watch-streams) and lease keep-alives. These requests require asynchronous non blocking calls to the JSON API. Unlike Go, concurrency is not a core functionality of Perl. Perl does support asynchronous transactions through a few modules, I went with AnyEvent [AnyEvent::HTTP](https://metacpan.org/pod/AnyEvent::HTTP). Programming using asynchronous non blocking code takes a little getting used to.
 
 
 ```perl
 # create a watch on key foo
-$watch = $etcd->watch( { key => 'foo'}, sub {
+$etcd->watch( { key => 'foo'}, sub {
     my ($result) =  @_;
     push @events, $result;
 })->create;
 
+print scalar @events . "\n";
+
 # put key foo
 $etcd->put({ key => 'foo', value => 'bar' });
 
-# get key foo
-$etcd->range({ key => 'foo' });
+# delete key
+$etcd->deleterange( { key => 'foo' } );
 
 print scalar @events . "\n";
 
 ```
-The result of this script prints '2'. So what happened here? This is the magic of using an asynconous callback. At the start the watch is created and the connection to etcd stays open. A watch literally creates a connection to the etcd cluster and watches for any action against the key (foo). When the put is made in the next line the event triggers a reply from the watch and pushes that result into the event array, the same for the get. This is a trivial example but really interesting if you think about it. The code below the watch triggered actions against code that has already run. Watches can be very useful for many reasons. Lets change the example to use a key ip_address. Now if the watch sees a change in that key. We have can perform another action such as update a DNS entry for example. It shouldn't be too hard to think of lots of data that you would want to take action on if it changed.
+The result of this script prints 1 followed by 3. So what happened here? It is easy to understand how events had one record on the first print. But how did it end up with 3 on the second. Look at it closely. This is the magic of using an asynconous callback. At the start the watch is created and the connection to etcd stays open. A watch literally creates a connection to the etcd cluster and watches for any action against the key (foo). The first event is the watch is returns created with a value of true and and pushes that result into the event array. When the put and delete occur same thing happens. This is a trivial example but really interesting if you think about it. The code below the watch triggered actions against code that has already run. Watches can be very useful for many reasons. Lets change the example to use a key ip_address. Now if the watch sees a change in that key. We have can perform another action such as update a DNS entry for example. It shouldn't be too hard to think of lots of data that you would want to take action on if it changed.
 
 Once I got the hang of using callbacks and wrapped my head around writing non-blocking code I made nice progress and had asynchronous tests passing. At this point I really thought the war was won.
 But then I had the startling realization that there was no support for authentication via grpc-gateway. [mike-drop](https://media.giphy.com/media/qlwnHTKCPeak0/giphy.gif). Not only was the support not availabe through etcd but no support existed for authentication at all through grpc-gateway. This was a complicated problem. The grpc-gateway reads a TODO So out of pure stubbornness I polished up my Go skills and added the support to etcd via [#7999](https://github.com/coreos/etcd/pull/7999). As of etcd v3.3+ header based token authentication via grpc-gateway is supported. Please give it a try!
