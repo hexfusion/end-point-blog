@@ -29,15 +29,19 @@ $etcd->watch( { key => 'foo'}, sub {
 print scalar @events . "\n";
 
 # put key foo
-$etcd->put({ key => 'foo', value => 'bar' });
+$etcd->put( { key => 'foo', value => 'bar' } );
 
 # delete key
 $etcd->deleterange( { key => 'foo' } );
 
 print scalar @events . "\n";
 
+# result
+1
+3
+
 ```
-The result of this script prints 1 followed by 3. So what happened here? It is easy to understand how events had one record on the first print. But how did it end up with 3 on the second. Look at it closely. This is the magic of using an asynconous callback. At the start the watch is created and the connection to etcd stays open. A watch literally creates a connection to the etcd cluster and watches for any action against the key (foo). The first event is the watch is returns created with a value of true and and pushes that result into the event array. When the put and delete occur same thing happens. This is a trivial example but really interesting if you think about it. The code below the watch triggered actions against code that has already run. Watches can be very useful for many reasons. Lets change the example to use a key ip_address. Now if the watch sees a change in that key. We have can perform another action such as update a DNS entry for example. It shouldn't be too hard to think of lots of data that you would want to take action on if it changed.
+The result of this script prints 1 followed by 3. So what happened here? It is easy to understand how @events had one record on the first print. But how did it end up with 3 on the second. Look at it closely. This is the magic of using an asynconous callback. At the start the watch is created and the connection to etcd stays open. A watch literally creates a connection to the etcd cluster and watches for any action against the key (foo). The first event is the watch is returns created with a value of true and and pushes that result into the event array. When the put and delete occur same thing happens. This is a trivial example but really interesting if you think about it. The code below the watch triggered actions against code that has already run. Watches can be very useful for many reasons. Lets change the example to use a key ip_address. Now if the watch sees a change in that key. We have can perform another action such as update a DNS entry for example. It shouldn't be too hard to think of lots of data that you would want to take action on if it changed.
 
 Once I got the hang of using callbacks and wrapped my head around writing non-blocking code I made nice progress and had asynchronous tests passing. At this point I really thought the war was won.
 But then I had the startling realization that there was no support for authentication via grpc-gateway. [mike-drop](https://media.giphy.com/media/qlwnHTKCPeak0/giphy.gif). Not only was the support not availabe through etcd but no support existed for authentication at all through grpc-gateway. This was a complicated problem. The grpc-gateway reads a TODO So out of pure stubbornness I polished up my Go skills and added the support to etcd via [#7999](https://github.com/coreos/etcd/pull/7999). As of etcd v3.3+ header based token authentication via grpc-gateway is supported. Please give it a try!
